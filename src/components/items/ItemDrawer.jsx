@@ -1,56 +1,81 @@
 import { useState, useEffect } from 'react'
 import CategoryDropdown from '../shared/CategoryDropdown'
+import PriceDisplay from './PriceDisplay'
+import PriceHistory from './PriceHistory'
+import { usePriceFetch } from '../../hooks/usePriceFetch'
+import { supabase } from '../../lib/supabase'
 
 export default function ItemDrawer({ tripItem, onClose, onSave, onRemove }) {
   const item = tripItem?.items || {}
+
   const [form, setForm] = useState({
-    name: '',
-    category: 'Other',
-    qty: 1,
+    name:       '',
+    category:   'Other',
+    qty:        1,
     unit_price: '',
-    notes: '',
+    notes:      '',
+    sams_url:   '',
   })
+  const [refreshedPrice, setRefreshedPrice] = useState(null)
+
+  const { fetchPrice, isFetching, getError } = usePriceFetch()
 
   useEffect(() => {
     if (tripItem) {
       setForm({
-        name: item.name || '',
-        category: item.category || 'Other',
-        qty: tripItem.qty || 1,
+        name:       item.name       || '',
+        category:   item.category   || 'Other',
+        qty:        tripItem.qty    || 1,
         unit_price: tripItem.unit_price ?? item.unit_price ?? '',
-        notes: item.notes || '',
+        notes:      item.notes      || '',
+        sams_url:   item.sams_url   || '',
       })
+      setRefreshedPrice(null)
     }
   }, [tripItem])
 
   if (!tripItem) return null
 
-  function handleSave() {
-    onSave(tripItem.id, {
-      qty: Number(form.qty) || 1,
+  const displayPrice = refreshedPrice ?? (tripItem.unit_price ?? item.unit_price)
+  const isFetchingThis = isFetching(item.id)
+  const fetchError     = getError(item.id)
+
+  async function handleRefreshPrice() {
+    if (!item.id || !item.sams_url) return
+    const newPrice = await fetchPrice(item)
+    if (newPrice != null) {
+      setRefreshedPrice(newPrice)
+      setForm(f => ({ ...f, unit_price: newPrice }))
+    }
+  }
+
+  async function handleSave() {
+    const updates = {
+      qty:        Number(form.qty) || 1,
       unit_price: form.unit_price !== '' ? Number(form.unit_price) : null,
-      items: {
-        name: form.name,
+    }
+    // Also update the item record (name, category, notes, sams_url)
+    if (item.id) {
+      await supabase.from('items').update({
+        name:     form.name.trim(),
         category: form.category,
-        notes: form.notes,
-      }
-    })
+        notes:    form.notes.trim() || null,
+        sams_url: form.sams_url.trim() || null,
+      }).eq('id', item.id)
+    }
+    onSave(tripItem.id, updates)
     onClose()
   }
 
-  const fmt = (n) => n != null ? `$${Number(n).toFixed(2)}` : null
-  const lineTotal = form.unit_price ? (Number(form.unit_price) * Number(form.qty)).toFixed(2) : null
+  const lineTotal = form.unit_price
+    ? (Number(form.unit_price) * Number(form.qty)).toFixed(2)
+    : null
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/40 z-40 transition-opacity"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black/40 z-40 transition-opacity" onClick={onClose} />
 
-      {/* Drawer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl z-50 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl z-50 shadow-2xl max-h-[92vh] overflow-y-auto">
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
@@ -59,14 +84,64 @@ export default function ItemDrawer({ tripItem, onClose, onSave, onRemove }) {
         <div className="px-5 pb-8">
           {/* Header */}
           <div className="flex items-start justify-between mb-5 pt-2">
-            <div className="flex-1">
-              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-1">Edit Item</p>
-              <h3 className="text-lg font-semibold text-gray-900 leading-tight">{item.name}</h3>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-0.5">Edit Item</p>
+              <h3 className="text-lg font-semibold text-gray-900 leading-tight truncate">
+                {item.name}
+              </h3>
+              {displayPrice != null && (
+                <div className="mt-1">
+                  <PriceDisplay
+                    currentPrice={displayPrice}
+                    lastPrice={item.last_price}
+                    size="md"
+                  />
+                </div>
+              )}
             </div>
             {item.image_url && (
-              <img src={item.image_url} alt={item.name} className="w-14 h-14 rounded-xl object-cover ml-3 bg-gray-100" />
+              <img
+                src={item.image_url}
+                alt={item.name}
+                className="w-16 h-16 rounded-xl object-cover ml-3 bg-gray-100 flex-shrink-0"
+              />
             )}
           </div>
+
+          {/* Price refresh row */}
+          {item.sams_url && (
+            <div className="mb-5 p-3 bg-gray-50 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-600">Live Price</p>
+                {fetchError ? (
+                  <p className="text-xs text-danger mt-0.5">{fetchError}</p>
+                ) : item.price_updated ? (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Updated {new Date(item.price_updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-0.5">Never refreshed</p>
+                )}
+              </div>
+              <button
+                onClick={handleRefreshPrice}
+                disabled={isFetchingThis}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold active:bg-primary-dark disabled:opacity-60"
+              >
+                {isFetchingThis ? (
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                  </svg>
+                )}
+                {isFetchingThis ? 'Fetching...' : 'Refresh Price'}
+              </button>
+            </div>
+          )}
 
           {/* Form fields */}
           <div className="space-y-4">
@@ -113,7 +188,10 @@ export default function ItemDrawer({ tripItem, onClose, onSave, onRemove }) {
 
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1.5">Category</label>
-              <CategoryDropdown value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} />
+              <CategoryDropdown
+                value={form.category}
+                onChange={v => setForm(f => ({ ...f, category: v }))}
+              />
             </div>
 
             <div>
@@ -126,6 +204,29 @@ export default function ItemDrawer({ tripItem, onClose, onSave, onRemove }) {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none"
               />
             </div>
+
+            {/* Sam's Club URL */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                Sam's Club URL
+                <span className="text-gray-300 ml-1 font-normal">(enables live price)</span>
+              </label>
+              <input
+                type="url"
+                value={form.sams_url}
+                onChange={e => setForm(f => ({ ...f, sams_url: e.target.value }))}
+                placeholder="https://www.samsclub.com/p/..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+            </div>
+
+            {/* Price History */}
+            {item.id && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">Price History</p>
+                <PriceHistory itemId={item.id} />
+              </div>
+            )}
           </div>
 
           {/* Actions */}
