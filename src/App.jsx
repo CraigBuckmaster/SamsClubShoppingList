@@ -4,6 +4,7 @@ import AppShell from './components/layout/AppShell'
 import TripPage from './pages/TripPage'
 import MasterListPage from './pages/MasterListPage'
 import HistoryPage from './pages/HistoryPage'
+import TripDetailPage from './pages/TripDetailPage'
 import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
             <Route path="/" element={<TripPage />} />
             <Route path="/list" element={<MasterListPage />} />
             <Route path="/history" element={<HistoryPage />} />
+            <Route path="/history/:tripId" element={<TripDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </AppShell>

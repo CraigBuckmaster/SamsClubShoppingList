@@ -1,6 +1,12 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
+const BATCH_DELAY_MS = 800 // Delay between requests to avoid rate limiting
+
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms))
+}
+
 export function usePriceFetch() {
   const [fetching, setFetching] = useState({}) // { [itemId]: true }
   const [errors, setErrors]     = useState({}) // { [itemId]: 'message' }
@@ -61,7 +67,9 @@ export function usePriceFetch() {
     })
 
     const updatedPrices = {}
-    for (const tripItem of stale) {
+    for (let idx = 0; idx < stale.length; idx++) {
+      const tripItem = stale[idx]
+      if (idx > 0) await delay(BATCH_DELAY_MS)
       const price = await fetchPrice(tripItem.items)
       if (price != null) updatedPrices[tripItem.items.id] = price
     }
@@ -72,7 +80,9 @@ export function usePriceFetch() {
   const refreshAll = useCallback(async (items) => {
     const withUrl = items.filter(i => i.items?.sams_url)
     const updatedPrices = {}
-    for (const tripItem of withUrl) {
+    for (let idx = 0; idx < withUrl.length; idx++) {
+      const tripItem = withUrl[idx]
+      if (idx > 0) await delay(BATCH_DELAY_MS)
       const price = await fetchPrice(tripItem.items)
       if (price != null) updatedPrices[tripItem.items.id] = price
     }

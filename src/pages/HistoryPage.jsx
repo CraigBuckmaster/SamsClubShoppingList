@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import EmptyState from '../components/shared/EmptyState'
 
 export default function HistoryPage() {
   const [trips, setTrips] = useState([])
   const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
 
   useEffect(() => {
     async function load() {
@@ -44,7 +46,7 @@ export default function HistoryPage() {
         </div>
       ) : trips.length === 0 ? (
         <EmptyState
-          icon="🕐"
+          icon="&#128336;"
           title="No completed trips yet"
           subtitle="Complete your first trip to see it here"
         />
@@ -54,25 +56,34 @@ export default function HistoryPage() {
             const total = tripTotal(trip)
             const itemCount = trip.trip_items?.length || 0
             return (
-              <div key={trip.id} className="px-4 py-4">
+              <button
+                key={trip.id}
+                onClick={() => navigate(`/history/${trip.id}`)}
+                className="w-full text-left px-4 py-4 active:bg-gray-50 transition-colors"
+              >
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-semibold text-gray-800">{trip.name}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{formatDate(trip.created_at)}</p>
                     <p className="text-xs text-gray-400">{itemCount} item{itemCount !== 1 ? 's' : ''}</p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-base font-semibold font-mono text-gray-800">
-                      ${total.toFixed(2)}
-                    </p>
-                    {trip.budget && (
-                      <p className="text-xs text-gray-400">
-                        of ${Number(trip.budget).toFixed(2)} budget
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <p className="text-base font-semibold font-mono text-gray-800">
+                        ${total.toFixed(2)}
                       </p>
-                    )}
+                      {trip.budget && (
+                        <p className="text-xs text-gray-400">
+                          of ${Number(trip.budget).toFixed(2)} budget
+                        </p>
+                      )}
+                    </div>
+                    <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                    </svg>
                   </div>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>

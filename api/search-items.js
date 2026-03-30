@@ -8,6 +8,8 @@
 import * as cheerio from 'cheerio'
 
 const DEBUG = false  // Set true temporarily to inspect raw __NEXT_DATA__ paths
+const MAX_RETRIES = 2
+const RETRY_DELAY_MS = 1000
 
 // Known fallback paths for search result records — tries each in order
 const SEARCH_PATHS = [
@@ -43,6 +45,30 @@ function extractProduct(record) {
   }
 }
 
+async function fetchWithRetry(url, options, retries = MAX_RETRIES) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, options)
+
+      // Retry on 429 (rate limited) or 5xx server errors
+      if ((response.status === 429 || response.status >= 500) && attempt < retries) {
+        const delay = RETRY_DELAY_MS * Math.pow(2, attempt)
+        await new Promise(r => setTimeout(r, delay))
+        continue
+      }
+
+      return response
+    } catch (err) {
+      if (attempt < retries) {
+        const delay = RETRY_DELAY_MS * Math.pow(2, attempt)
+        await new Promise(r => setTimeout(r, delay))
+        continue
+      }
+      throw err
+    }
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET')
@@ -55,9 +81,9 @@ export default async function handler(req, res) {
   const searchUrl = `https://www.samsclub.com/search?q=${encodeURIComponent(q.trim())}&xid=plp`
 
   try {
-    const response = await fetch(searchUrl, {
+    const response = await fetchWithRetry(searchUrl, {
       headers: {
-        'User-Agent':      'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'User-Agent':      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
         'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
         'Cache-Control':   'no-cache',
